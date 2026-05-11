@@ -13,6 +13,7 @@
     "dependencies": {
         "dotenv": "^17.4.2",
         "googleapis": "^171.4.0",
+        "node-cron": "^4.2.1",
         "node-telegram-bot-api": "^0.67.0"
     }
 }

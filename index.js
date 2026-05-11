@@ -1,3 +1,9 @@
+const fs = require("fs");
+
+if (process.env.GOOGLE_CREDENTIALS) {
+    fs.writeFileSync("credentials.json", Buffer.from(process.env.GOOGLE_CREDENTIALS, "base64"));
+}
+
 require("dotenv").config();
 const TelegramBot = require("node-telegram-bot-api");
 const { google } = require("googleapis");
@@ -155,5 +161,63 @@ Gunakan:
 Contoh:
 /tilawah al baqarah 1 5`,
         );
+    }
+});
+
+async function getWeeklyStats() {
+    const sheetName = getSheetName();
+
+    const res = await sheets.spreadsheets.values.get({
+        spreadsheetId: process.env.SPREADSHEET_ID,
+        range: `${sheetName}!A:F`,
+    });
+
+    const rows = res.data.values;
+
+    if (!rows || rows.length < 2) return [];
+
+    const now = new Date();
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(now.getDate() - 7);
+
+    const stats = {};
+
+    for (let i = 1; i < rows.length; i++) {
+        const [tanggal, nama, , , , jumlah] = rows[i];
+
+        const date = new Date(tanggal);
+
+        if (date >= sevenDaysAgo && date <= now) {
+            const jml = parseInt(jumlah, 10) || 0;
+
+            if (!stats[nama]) stats[nama] = 0;
+            stats[nama] += jml;
+        }
+    }
+
+    // convert ke array & sort desc
+    return Object.entries(stats)
+        .map(([nama, total]) => ({ nama, total }))
+        .sort((a, b) => b.total - a.total);
+}
+
+bot.onText(/\/weekly/, async (msg) => {
+    try {
+        const stats = await getWeeklyStats();
+
+        if (stats.length === 0) {
+            return bot.sendMessage(msg.chat.id, "📊 Belum ada data minggu ini");
+        }
+
+        let message = `📊 Statistik Tilawah Mingguan\n\n`;
+
+        stats.forEach((user, i) => {
+            message += `${i + 1}. ${user.nama} - ${user.total} ayat\n`;
+        });
+
+        bot.sendMessage(msg.chat.id, message);
+    } catch (err) {
+        console.error(err);
+        bot.sendMessage(msg.chat.id, "❌ Gagal mengambil statistik");
     }
 });

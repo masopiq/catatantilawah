@@ -138,11 +138,10 @@ bot.on("message", async (msg) => {
 
         const report = `📖 Progress Tilawah
 
-👤 ${user}
-🗓️ ${tanggal}
-📚 ${surah}
-📍 Ayat ${startAyat} - ${stopAyat}
-📊 Total: ${jumlahAyat} ayat`;
+👤 ${user} | ${tanggal}
+📚 Surat :${surah}
+📍 Ayat  : ${startAyat} - ${stopAyat}
+📊 Total : ${jumlahAyat} ayat`;
 
         await saveToSheet([new Date().toISOString(), user, surah, startAyat, stopAyat, jumlahAyat]);
 
@@ -199,12 +198,56 @@ async function getWeeklyStats() {
         .sort((a, b) => b.total - a.total);
 }
 
+async function getMonthlyStats() {
+    const sheetName = getSheetName();
+
+    const res = await sheets.spreadsheets.values.get({
+        spreadsheetId: process.env.SPREADSHEET_ID,
+        range: `${sheetName}!A:F`,
+    });
+
+    const rows = res.data.values || [];
+
+    if (rows.length < 2) return [];
+
+    const stats = {};
+
+    for (let i = 1; i < rows.length; i++) {
+        const [, nama, , , , jumlah] = rows[i];
+
+        const jml = parseInt(jumlah, 10) || 0;
+
+        if (!stats[nama]) {
+            stats[nama] = 0;
+        }
+
+        stats[nama] += jml;
+    }
+
+    return Object.entries(stats)
+        .map(([nama, total]) => ({ nama, total }))
+        .sort((a, b) => b.total - a.total);
+}
+
+function getRankIcon(index) {
+    switch (index) {
+        case 0:
+            return "👑";
+        case 1:
+            return "🥈";
+        case 2:
+            return "🥉";
+        default:
+            return "▫️";
+    }
+}
+
 bot.onText(/\/summary/, async (msg) => {
     try {
         const weekly = await getWeeklyStats();
+        const monthly = await getMonthlyStats();
 
         const tanggal = new Date().toLocaleDateString("id-ID", {
-            timeZone: "Asia/Makassar",
             weekday: "long",
             day: "2-digit",
             month: "long",
@@ -214,26 +257,43 @@ bot.onText(/\/summary/, async (msg) => {
         let text = `📊 *Resume Tilawah*\n`;
         text += `🗓️ ${tanggal}\n\n`;
 
+        // ======================
+        // WEEKLY
+        // ======================
         text += `━━━━━━━━━━━━━━━━━━\n`;
-        text += `👥 *Resume Minggu Ini*\n\n`;
+        text += `*Resume Minggu Ini*\n\n`;
 
         if (weekly.length === 0) {
             text += `Belum ada data tilawah minggu ini\n\n`;
         } else {
             weekly.forEach((u, i) => {
-                let icon = "📖";
+                const icon = getRankIcon(i);
 
-                if (i === 0) icon = "🥇";
-                else if (i === 1) icon = "🥈";
-                else if (i === 2) icon = "🥉";
-
-                text += `${icon} ${u.nama}\n`;
-                text += `   ${u.total} ayat\n\n`;
+                text += `${icon} *${u.nama}* • ${u.total} ayat\n`;
             });
         }
 
+        // ======================
+        // MONTHLY
+        // ======================
         text += `━━━━━━━━━━━━━━━━━━\n`;
-        text += `✨ Semoga istiqomah dalam tilawah\n`;
+        text += `*Resume Bulan Ini*\n\n`;
+
+        if (monthly.length === 0) {
+            text += `Belum ada data tilawah bulan ini\n\n`;
+        } else {
+            monthly.forEach((u, i) => {
+                const icon = getRankIcon(i);
+
+                text += `${icon} *${u.nama}* • ${u.total} ayat\n`;
+            });
+        }
+
+        // ======================
+        // FOOTER
+        // ======================
+        text += `━━━━━━━━━━━━━━━━━━\n`;
+        text += `✨ Tetap istiqomah dalam tilawah\n`;
 
         await bot.sendMessage(msg.chat.id, text, {
             parse_mode: "Markdown",

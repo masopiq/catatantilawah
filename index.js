@@ -308,7 +308,7 @@ bot.onText(/\/summary/, async (msg) => {
 const cron = require("node-cron");
 
 cron.schedule(
-    "0 5 * * *",
+    "25 5 * * *",
     async () => {
         const tanggal = new Date().toLocaleDateString("id-ID", {
             timeZone: "Asia/Jakarta",
@@ -338,7 +338,7 @@ cron.schedule(
 );
 
 cron.schedule(
-    "02 14 * * *",
+    "25 18 * * *",
     async () => {
         const tanggal = new Date().toLocaleDateString("id-ID", {
             timeZone: "Asia/Jakarta",

@@ -304,3 +304,65 @@ bot.onText(/\/summary/, async (msg) => {
         bot.sendMessage(msg.chat.id, "❌ Gagal mengambil statistik");
     }
 });
+
+const cron = require("node-cron");
+
+cron.schedule(
+    "0 5 * * *",
+    async () => {
+        const tanggal = new Date().toLocaleDateString("id-ID", {
+            timeZone: "Asia/Jakarta",
+            weekday: "long",
+            day: "2-digit",
+            month: "long",
+            year: "numeric",
+        });
+
+        const message = `🌅 *Reminder Tilawah Pagi*
+
+🗓️ ${tanggal}
+
+✨ Jangan lupa memulai hari dengan tilawah
+
+📖 _"Awali hari dengan membaca Al Quran"_`;
+
+        await bot.sendMessage(process.env.GROUP_ID, message, {
+            parse_mode: "Markdown",
+        });
+
+        console.log("Reminder pagi terkirim");
+    },
+    {
+        timezone: "Asia/Jakarta",
+    },
+);
+
+cron.schedule(
+    "55 14 * * *",
+    async () => {
+        const tanggal = new Date().toLocaleDateString("id-ID", {
+            timeZone: "Asia/Jakarta",
+            weekday: "long",
+            day: "2-digit",
+            month: "long",
+            year: "numeric",
+        });
+
+        const message = `🌙 *Reminder Tilawah Malam*
+
+🗓️ ${tanggal}
+
+✨ Sudahkah tilawah hari ini?
+
+📖 _"Bacalah Al-Qur'an, karena ia akan datang memberi syafaat"_`;
+
+        await bot.sendMessage(process.env.GROUP_ID, message, {
+            parse_mode: "Markdown",
+        });
+
+        console.log("Reminder malam terkirim");
+    },
+    {
+        timezone: "Asia/Jakarta",
+    },
+);

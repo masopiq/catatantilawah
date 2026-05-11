@@ -129,7 +129,7 @@ bot.on("message", async (msg) => {
 
         const jumlahAyat = stopAyat - startAyat + 1;
 
-        const tanggal = new Date().toLocaleString("id-ID", {
+        const tanggal = new Date().toLocaleDateString("id-ID", {
             weekday: "long",
             day: "2-digit",
             month: "long",
@@ -144,7 +144,7 @@ bot.on("message", async (msg) => {
 📍 Ayat ${startAyat} - ${stopAyat}
 📊 Total: ${jumlahAyat} ayat`;
 
-        await saveToSheet([new Date().toLocaleString(), user, surah, startAyat, stopAyat, jumlahAyat]);
+        await saveToSheet([new Date().toISOString(), user, surah, startAyat, stopAyat, jumlahAyat]);
 
         await bot.sendMessage(process.env.GROUP_ID, report);
         await bot.sendMessage(msg.chat.id, "✅ Semoga tilawah hari ini tercatat sebagai amal sholeh");
@@ -199,23 +199,48 @@ async function getWeeklyStats() {
         .sort((a, b) => b.total - a.total);
 }
 
-bot.onText(/\/weekly/, async (msg) => {
+bot.onText(/\/summary/, async (msg) => {
     try {
-        const stats = await getWeeklyStats();
+        const weekly = await getWeeklyStats();
 
-        if (stats.length === 0) {
-            return bot.sendMessage(msg.chat.id, "📊 Belum ada data minggu ini");
-        }
-
-        let message = `📊 Statistik Tilawah Mingguan\n\n`;
-
-        stats.forEach((user, i) => {
-            message += `${i + 1}. ${user.nama} - ${user.total} ayat\n`;
+        const tanggal = new Date().toLocaleDateString("id-ID", {
+            timeZone: "Asia/Makassar",
+            weekday: "long",
+            day: "2-digit",
+            month: "long",
+            year: "numeric",
         });
 
-        bot.sendMessage(msg.chat.id, message);
+        let text = `📊 *Resume Tilawah*\n`;
+        text += `🗓️ ${tanggal}\n\n`;
+
+        text += `━━━━━━━━━━━━━━━━━━\n`;
+        text += `👥 *Resume Minggu Ini*\n\n`;
+
+        if (weekly.length === 0) {
+            text += `Belum ada data tilawah minggu ini\n\n`;
+        } else {
+            weekly.forEach((u, i) => {
+                let icon = "📖";
+
+                if (i === 0) icon = "🥇";
+                else if (i === 1) icon = "🥈";
+                else if (i === 2) icon = "🥉";
+
+                text += `${icon} ${u.nama}\n`;
+                text += `   ${u.total} ayat\n\n`;
+            });
+        }
+
+        text += `━━━━━━━━━━━━━━━━━━\n`;
+        text += `✨ Semoga istiqomah dalam tilawah\n`;
+
+        await bot.sendMessage(msg.chat.id, text, {
+            parse_mode: "Markdown",
+        });
     } catch (err) {
         console.error(err);
+
         bot.sendMessage(msg.chat.id, "❌ Gagal mengambil statistik");
     }
 });

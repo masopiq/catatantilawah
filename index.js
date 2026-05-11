@@ -1,0 +1,159 @@
+require("dotenv").config();
+const TelegramBot = require("node-telegram-bot-api");
+const { google } = require("googleapis");
+
+const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
+
+// Google Sheets Auth
+const auth = new google.auth.GoogleAuth({
+    keyFile: "credentials.json",
+    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+});
+
+const sheets = google.sheets({
+    version: "v4",
+    auth,
+});
+
+const SHEET_PREFIX = "Tilawah";
+
+function getSheetName() {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    return `${SHEET_PREFIX}_${year}_${month}`;
+}
+
+async function ensureSheetExists(sheetName) {
+    const res = await sheets.spreadsheets.get({
+        spreadsheetId: process.env.SPREADSHEET_ID,
+    });
+
+    const sheetExists = res.data.sheets.some((s) => s.properties.title === sheetName);
+
+    if (!sheetExists) {
+        console.log("📄 Membuat sheet baru:", sheetName);
+
+        await sheets.spreadsheets.batchUpdate({
+            spreadsheetId: process.env.SPREADSHEET_ID,
+            requestBody: {
+                requests: [
+                    {
+                        addSheet: {
+                            properties: {
+                                title: sheetName,
+                            },
+                        },
+                    },
+                ],
+            },
+        });
+
+        // Tambahkan header
+        await sheets.spreadsheets.values.update({
+            spreadsheetId: process.env.SPREADSHEET_ID,
+            range: `${sheetName}!A1:F1`,
+            valueInputOption: "RAW",
+            requestBody: {
+                values: [["Tanggal", "Nama", "Surah", "Start_Ayat", "Stop_Ayat", "Jumlah_Ayat"]],
+            },
+        });
+    }
+}
+
+async function saveToSheet(data) {
+    const sheetName = getSheetName();
+
+    await ensureSheetExists(sheetName);
+
+    await sheets.spreadsheets.values.append({
+        spreadsheetId: process.env.SPREADSHEET_ID,
+        range: `${sheetName}!A:F`, // ✅ FIX
+        valueInputOption: "USER_ENTERED",
+        requestBody: {
+            values: [data],
+        },
+    });
+}
+
+const surahList = require("./surah-list");
+
+// normalize string
+function normalizeText(text) {
+    return text.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+// cari surah paling cocok
+function findSurah(input) {
+    const normInput = normalizeText(input);
+
+    // exact match
+    for (const s of surahList) {
+        if (normalizeText(s) === normInput) return s;
+    }
+
+    // partial match
+    for (const s of surahList) {
+        if (normalizeText(s).includes(normInput)) return s;
+    }
+
+    return null;
+}
+
+bot.on("message", async (msg) => {
+    try {
+        if (!msg.text) return;
+
+        const text = msg.text.trim().replace(/\s+/g, " ");
+        const user = msg.from.first_name;
+
+        if (!text.toLowerCase().startsWith("/tilawah")) return;
+
+        const parts = text.split(" ");
+
+        if (parts.length < 4) throw new Error("Format salah");
+
+        const startAyat = parseInt(parts[parts.length - 2], 10);
+        const stopAyat = parseInt(parts[parts.length - 1], 10);
+
+        const surahInput = parts.slice(1, parts.length - 2).join(" ");
+        const surah = findSurah(surahInput);
+
+        if (!surah) throw new Error("Surah tidak dikenali");
+
+        const jumlahAyat = stopAyat - startAyat + 1;
+
+        const tanggal = new Date().toLocaleString("id-ID", {
+            weekday: "long",
+            day: "2-digit",
+            month: "long",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+        });
+
+        const report = `📖 Progress Tilawah
+
+👤 ${user}
+🗓️ ${tanggal}
+📚 ${surah}
+📍 Ayat ${startAyat} - ${stopAyat}
+📊 Total: ${jumlahAyat} ayat`;
+
+        await saveToSheet([new Date().toLocaleString(), user, surah, startAyat, stopAyat, jumlahAyat]);
+
+        await bot.sendMessage(process.env.GROUP_ID, report);
+        await bot.sendMessage(msg.chat.id, "✅ Semoga tilawah hari ini tercatat sebagai amal sholeh");
+    } catch (err) {
+        bot.sendMessage(
+            msg.chat.id,
+            `❌ ${err.message}
+
+Gunakan:
+/tilawah NamaSurah Start Stop
+
+Contoh:
+/tilawah al baqarah 1 5`,
+        );
+    }
+});

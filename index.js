@@ -338,7 +338,7 @@ cron.schedule(
 );
 
 cron.schedule(
-    "58 14 * * *",
+    "02 14 * * *",
     async () => {
         const tanggal = new Date().toLocaleDateString("id-ID", {
             timeZone: "Asia/Jakarta",

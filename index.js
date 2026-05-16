@@ -111,53 +111,336 @@ bot.on("message", async (msg) => {
         if (!msg.text) return;
 
         const text = msg.text.trim().replace(/\s+/g, " ");
+
         const user = msg.from.first_name;
 
         if (!text.toLowerCase().startsWith("/tilawah")) return;
 
-        const parts = text.split(" ");
+        // ======================
+        // REMOVE COMMAND
+        // ======================
 
-        if (parts.length < 4) throw new Error("Format salah");
+        const rawInput = text.replace("/tilawah", "").trim();
 
-        const startAyat = parseInt(parts[parts.length - 2], 10);
-        const stopAyat = parseInt(parts[parts.length - 1], 10);
+        if (!rawInput) {
+            await bot.sendMessage(
+                msg.chat.id,
 
-        const surahInput = parts.slice(1, parts.length - 2).join(" ");
-        const surah = findSurah(surahInput);
+                `❌ Format salah
 
-        if (!surah) throw new Error("Surah tidak dikenali");
+Contoh:
 
-        const jumlahAyat = stopAyat - startAyat + 1;
+/tilawah al baqarah 280 286 -> an nisa 1 20`,
+            );
+
+            return;
+        }
+
+        // ======================
+        // DATE
+        // ======================
 
         const tanggal = new Date().toLocaleDateString("id-ID", {
+            timeZone: "Asia/Jakarta",
+
             weekday: "long",
             day: "2-digit",
             month: "long",
             year: "numeric",
         });
 
-        const report = `📖 Progress Tilawah
+        // ======================
+        // REPORT
+        // ======================
 
-👤 ${user} | ${tanggal}
-📚 Surat :${surah}
-📍 Ayat  : ${startAyat} - ${stopAyat}
-📊 Total : ${jumlahAyat} ayat`;
+        let totalKeseluruhan = 0;
 
-        await saveToSheet([new Date().toISOString(), user, surah, startAyat, stopAyat, jumlahAyat]);
+        let report = `📖 Progress Tilawah
 
-        await bot.sendMessage(process.env.GROUP_ID, report);
-        await bot.sendMessage(msg.chat.id, "✅ Semoga tilawah hari ini tercatat sebagai amal sholeh");
-    } catch (err) {
-        bot.sendMessage(
-            msg.chat.id,
-            `❌ ${err.message}
+👤 ${user} • ${tanggal}
 
-Gunakan:
-/tilawah NamaSurah Start Stop
+`;
+
+        // ======================
+        // RANGE MODE
+        // ======================
+
+        if (rawInput.includes("->")) {
+            const rangeParts = rawInput.split("->").map((v) => v.trim());
+
+            if (rangeParts.length !== 2) {
+                await bot.sendMessage(
+                    msg.chat.id,
+
+                    `❌ Format range salah
 
 Contoh:
-/tilawah al baqarah 1 5`,
-        );
+
+/tilawah al baqarah 280 286 -> an nisa 1 20`,
+                );
+
+                return;
+            }
+
+            // ======================
+            // START
+            // ======================
+
+            const startParts = rangeParts[0].trim().split(/\s+/);
+
+            const startAyat = parseInt(startParts[startParts.length - 2], 10);
+
+            const stopAyatAwal = parseInt(startParts[startParts.length - 1], 10);
+
+            const startSurahInput = startParts.slice(0, startParts.length - 2).join(" ");
+
+            const startSurahName = findSurah(startSurahInput);
+
+            // ======================
+            // END
+            // ======================
+
+            const endParts = rangeParts[1].trim().split(/\s+/);
+
+            const startAyatAkhir = parseInt(endParts[endParts.length - 2], 10);
+
+            const stopAyatAkhir = parseInt(endParts[endParts.length - 1], 10);
+
+            const endSurahInput = endParts.slice(0, endParts.length - 2).join(" ");
+
+            const endSurahName = findSurah(endSurahInput);
+
+            // ======================
+            // VALIDATION
+            // ======================
+
+            if (!startSurahName || !endSurahName) {
+                await bot.sendMessage(msg.chat.id, "❌ Surah tidak dikenali");
+
+                return;
+            }
+
+            const startSurah = surahList.find((s) => s.nama === startSurahName);
+
+            const endSurah = surahList.find((s) => s.nama === endSurahName);
+
+            if (!startSurah || !endSurah) {
+                await bot.sendMessage(msg.chat.id, "❌ Data surah tidak ditemukan");
+
+                return;
+            }
+
+            if (startSurah.nomor > endSurah.nomor) {
+                await bot.sendMessage(msg.chat.id, "❌ Urutan surah tidak valid");
+
+                return;
+            }
+
+            // ======================
+            // LOOP SURAH
+            // ======================
+
+            for (let i = startSurah.nomor; i <= endSurah.nomor; i++) {
+                const surah = surahList.find((s) => s.nomor === i);
+
+                if (!surah) continue;
+
+                let start = 1;
+
+                let stop = surah.ayat;
+
+                // awal
+                if (surah.nomor === startSurah.nomor) {
+                    start = startAyat;
+
+                    stop = stopAyatAwal;
+                }
+
+                // akhir
+                if (surah.nomor === endSurah.nomor) {
+                    start = startAyatAkhir;
+
+                    stop = stopAyatAkhir;
+                }
+
+                // surah sama
+                if (startSurah.nomor === endSurah.nomor) {
+                    start = startAyat;
+
+                    stop = stopAyatAkhir;
+                }
+
+                // validate
+                if (stop < start) {
+                    report += `❌ Range invalid
+• ${surah.nama}
+
+`;
+
+                    continue;
+                }
+
+                if (stop > surah.ayat) {
+                    report += `❌ Ayat melebihi batas
+• ${surah.nama}
+
+`;
+
+                    continue;
+                }
+
+                const jumlahAyat = stop - start + 1;
+
+                totalKeseluruhan += jumlahAyat;
+
+                // save
+                await saveToSheet([
+                    new Date().toLocaleString("sv-SE", {
+                        timeZone: "Asia/Jakarta",
+                    }),
+
+                    user,
+
+                    surah.nama,
+
+                    start,
+
+                    stop,
+
+                    jumlahAyat,
+                ]);
+
+                // report
+                report += `📚 ${surah.nama}
+📍 ${start} - ${stop}
+📊 ${jumlahAyat} ayat
+
+`;
+            }
+        }
+
+        // ======================
+        // MULTI MANUAL MODE
+        // ======================
+        else {
+            const entries = rawInput
+                .split(";")
+                .map((e) => e.trim())
+                .filter(Boolean);
+
+            for (const entry of entries) {
+                try {
+                    const parts = entry.trim().split(/\s+/);
+
+                    if (parts.length < 3) {
+                        report += `❌ Format invalid
+• ${entry}
+
+`;
+
+                        continue;
+                    }
+
+                    const startAyat = parseInt(parts[parts.length - 2], 10);
+
+                    const stopAyat = parseInt(parts[parts.length - 1], 10);
+
+                    if (isNaN(startAyat) || isNaN(stopAyat)) {
+                        report += `❌ Ayat invalid
+• ${entry}
+
+`;
+
+                        continue;
+                    }
+
+                    if (stopAyat < startAyat) {
+                        report += `❌ Range invalid
+• ${entry}
+
+`;
+
+                        continue;
+                    }
+
+                    const surahInput = parts.slice(0, parts.length - 2).join(" ");
+
+                    const surah = findSurah(surahInput);
+
+                    if (!surah) {
+                        report += `❌ Surah tidak dikenali
+• ${entry}
+
+`;
+
+                        continue;
+                    }
+
+                    const surahData = surahList.find((s) => s.nama === surah);
+
+                    if (stopAyat > surahData.ayat) {
+                        report += `❌ Ayat melebihi batas
+• ${surah}
+
+`;
+
+                        continue;
+                    }
+
+                    const jumlahAyat = stopAyat - startAyat + 1;
+
+                    totalKeseluruhan += jumlahAyat;
+
+                    await saveToSheet([
+                        new Date().toLocaleString("sv-SE", {
+                            timeZone: "Asia/Jakarta",
+                        }),
+
+                        user,
+
+                        surah,
+
+                        startAyat,
+
+                        stopAyat,
+
+                        jumlahAyat,
+                    ]);
+
+                    report += `📚 ${surah}
+📍 ${startAyat} - ${stopAyat}
+📊 ${jumlahAyat} ayat
+
+`;
+                } catch (err) {
+                    console.error(err);
+
+                    report += `❌ Gagal memproses
+• ${entry}
+
+`;
+                }
+            }
+        }
+
+        // ======================
+        // FOOTER
+        // ======================
+
+        report += `━━━━━━━━━━━━━━
+✨ Total keseluruhan • ${totalKeseluruhan} ayat`;
+
+        // ======================
+        // SEND
+        // ======================
+
+        await bot.sendMessage(process.env.GROUP_ID, report);
+
+        await bot.sendMessage(msg.chat.id, "✅ Tilawah berhasil dicatat");
+    } catch (err) {
+        console.error(err);
+
+        await bot.sendMessage(msg.chat.id, "❌ Terjadi kesalahan");
     }
 });
 

@@ -95,12 +95,16 @@ function findSurah(input) {
 
     // exact match
     for (const s of surahList) {
-        if (normalizeText(s) === normInput) return s;
+        if (normalizeText(s.nama) === normInput) {
+            return s.nama;
+        }
     }
 
     // partial match
     for (const s of surahList) {
-        if (normalizeText(s).includes(normInput)) return s;
+        if (normalizeText(s.nama).includes(normInput)) {
+            return s.nama;
+        }
     }
 
     return null;
